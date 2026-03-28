@@ -20,7 +20,7 @@ your website → lightweight event endpoint → SQLite → real-time dashboard
 
 ---
 
-## Quick Start (2 min — Railway)
+## Quick Start (2 min — Railway) As eg but you can use any
 
 1. Fork this repo
 2. Create a new project on [Railway](https://railway.app) and deploy from your fork
@@ -180,4 +180,4 @@ docker cp trackvault-pockettrack-1:/app/data/events.db ./backup.db
 
 ## License
 
-MIT
+Apache License 2.0
