@@ -1,0 +1,14 @@
+{
+  "name": "trackvault",
+  "version": "1.0.0",
+  "description": "Lightweight self-hosted product analytics",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.3",
+    "sql.js": "^1.12.0"
+  }
+}

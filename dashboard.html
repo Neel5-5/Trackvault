@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trackvault</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:       #0a0a0a;
+    --surface:  #111111;
+    --border:   #222222;
+    --accent:   #00ff88;
+    --accent2:  #0088ff;
+    --muted:    #555555;
+    --text:     #e8e8e8;
+    --dim:      #888888;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.04) 2px,
+      rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo::before {
+    content: '▶';
+    font-size: 10px;
+    animation: blink 1.2s step-end infinite;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .range-tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 3px;
+    border-radius: 4px;
+  }
+
+  .range-tabs button {
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+
+  .range-tabs button.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+
+  .range-tabs button:hover:not(.active) { color: var(--text); }
+
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 22px 24px;
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(12px);
+    animation: fadeUp 0.4s forwards;
+  }
+
+  .kpi:nth-child(2) { animation-delay: 0.05s; }
+  .kpi:nth-child(3) { animation-delay: 0.1s; }
+  .kpi:nth-child(4) { animation-delay: 0.15s; }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .kpi::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.6s ease;
+  }
+
+  .kpi.loaded::after { transform: scaleX(1); }
+
+  .kpi-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .kpi-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 32px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .chart-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px;
+    grid-column: 1 / -1;
+    opacity: 0;
+    animation: fadeUp 0.4s 0.2s forwards;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px;
+    opacity: 0;
+    animation: fadeUp 0.4s 0.3s forwards;
+  }
+
+  .panel-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+  }
+
+  .table-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+
+  .table-row:last-child { border-bottom: none; }
+
+  .row-bar-wrap {
+    flex: 1;
+    background: var(--border);
+    height: 3px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .row-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+
+  .row-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--dim);
+    width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+
+  .row-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    flex-shrink: 0;
+  }
+
+  .empty {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 16px 0;
+    text-align: center;
+  }
+
+  .snippet-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    opacity: 0;
+    animation: fadeUp 0.4s 0.4s forwards;
+  }
+
+  .snippet-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .snippet-code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--accent2);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 14px;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  canvas { max-height: 220px; }
+
+  @media (max-width: 768px) {
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .grid { grid-template-columns: 1fr; }
+    main { padding: 16px; }
+    header { padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">TRACKVAULT</div>
+  <div class="range-tabs">
+    <button onclick="setRange(1)" data-r="1">1D</button>
+    <button onclick="setRange(7)" data-r="7" class="active">7D</button>
+    <button onclick="setRange(30)" data-r="30">30D</button>
+    <button onclick="setRange(90)" data-r="90">90D</button>
+  </div>
+</header>
+
+<main>
+  <div class="kpi-row">
+    <div class="kpi" id="kpi-pv">
+      <div class="kpi-label">Pageviews</div>
+      <div class="kpi-value" id="val-pv">—</div>
+    </div>
+    <div class="kpi" id="kpi-uv">
+      <div class="kpi-label">Unique Visitors</div>
+      <div class="kpi-value" id="val-uv">—</div>
+    </div>
+    <div class="kpi" id="kpi-ppv">
+      <div class="kpi-label">Pages / Visitor</div>
+      <div class="kpi-value" id="val-ppv">—</div>
+    </div>
+    <div class="kpi" id="kpi-days">
+      <div class="kpi-label">Active Days</div>
+      <div class="kpi-value" id="val-days">—</div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="panel-title">Traffic over time</div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-title">Top Pages</div>
+      <div id="pages-list"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Referrers</div>
+      <div id="ref-list"></div>
+    </div>
+  </div>
+
+  <div class="snippet-bar">
+    <span class="snippet-label">YOUR SNIPPET</span>
+    <div class="snippet-code" id="snippet-code">&lt;script src="<span id="snippet-src"></span>" async&gt;&lt;/script&gt;</div>
+    <button class="copy-btn" onclick="copySnippet()">COPY</button>
+  </div>
+</main>
+
+<script>
+  let range = 7;
+  let chartInst = null;
+  const token = new URLSearchParams(location.search).get('token') || '';
+  const origin = location.origin;
+
+  document.getElementById('snippet-src').textContent = origin + '/track.js';
+
+  function setRange(r) {
+    range = r;
+    document.querySelectorAll('.range-tabs button').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.r) === r);
+    });
+    load();
+  }
+
+  async function load() {
+    const url = '/api/stats?range=' + range + (token ? '&token=' + token : '');
+    const res = await fetch(url);
+    if (!res.ok) { alert('Unauthorized — add ?token=YOUR_TOKEN to the URL'); return; }
+    const d = await res.json();
+
+    // KPIs
+    document.getElementById('val-pv').textContent = fmt(d.pageviews);
+    document.getElementById('val-uv').textContent = fmt(d.uniques);
+    const ppv = d.uniques ? (d.pageviews / d.uniques).toFixed(1) : '—';
+    document.getElementById('val-ppv').textContent = ppv;
+    document.getElementById('val-days').textContent = d.daily.length;
+    document.querySelectorAll('.kpi').forEach(k => k.classList.add('loaded'));
+
+    // Chart
+    const labels = d.daily.map(r => r.day);
+    const views   = d.daily.map(r => r.views);
+    const visitors= d.daily.map(r => r.visitors);
+
+    if (chartInst) chartInst.destroy();
+    const ctx = document.getElementById('chart').getContext('2d');
+    chartInst = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Pageviews',
+            data: views,
+            borderColor: '#00ff88',
+            backgroundColor: 'rgba(0,255,136,0.06)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 3,
+            pointBackgroundColor: '#00ff88',
+          },
+          {
+            label: 'Visitors',
+            data: visitors,
+            borderColor: '#0088ff',
+            backgroundColor: 'rgba(0,136,255,0.06)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 3,
+            pointBackgroundColor: '#0088ff',
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: '#888', font: { family: 'IBM Plex Mono', size: 11 } } },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: { ticks: { color: '#555', font: { family: 'IBM Plex Mono', size: 11 } }, grid: { color: '#1a1a1a' } },
+          y: { ticks: { color: '#555', font: { family: 'IBM Plex Mono', size: 11 } }, grid: { color: '#1a1a1a' }, beginAtZero: true }
+        }
+      }
+    });
+
+    // Tables
+    renderList('pages-list', d.topPages, 'path', 'views');
+    renderList('ref-list',   d.referrers, 'referrer', 'views');
+  }
+
+  function renderList(id, rows, labelKey, countKey) {
+    const el = document.getElementById(id);
+    if (!rows.length) { el.innerHTML = '<div class="empty">no data yet</div>'; return; }
+    const max = rows[0][countKey];
+    el.innerHTML = rows.map(r => `
+      <div class="table-row">
+        <span class="row-label" title="${r[labelKey]}">${r[labelKey] || '(direct)'}</span>
+        <div class="row-bar-wrap"><div class="row-bar" style="width:${(r[countKey]/max*100).toFixed(1)}%"></div></div>
+        <span class="row-count">${fmt(r[countKey])}</span>
+      </div>
+    `).join('');
+  }
+
+  function fmt(n) {
+    if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+    if (n >= 1000)    return (n/1000).toFixed(1) + 'k';
+    return n;
+  }
+
+  function copySnippet() {
+    const src = origin + '/track.js';
+    const txt = `<script src="${src}" async><\/script>`;
+    navigator.clipboard.writeText(txt).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'COPIED';
+      setTimeout(() => btn.textContent = 'COPY', 2000);
+    });
+  }
+
+  load();
+</script>
+</body>
+</html>
